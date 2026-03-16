@@ -1,5 +1,34 @@
 import java.util.*;
 
+class InvalidBookingException extends Exception {
+    public InvalidBookingException(String message) {
+        super(message);
+    }
+}
+
+class ReservationValidator {
+
+    public void validate(String guestName, String roomType, RoomInventory inventory)
+            throws InvalidBookingException {
+
+        if (guestName == null || guestName.trim().isEmpty()) {
+            throw new InvalidBookingException("Guest name cannot be empty.");
+        }
+
+        if (roomType == null || roomType.trim().isEmpty()) {
+            throw new InvalidBookingException("Room type cannot be empty.");
+        }
+
+        if (!inventory.getRoomAvailability().containsKey(roomType)) {
+            throw new InvalidBookingException("Invalid room type selected.");
+        }
+
+        if (inventory.getRoomAvailability().get(roomType) <= 0) {
+            throw new InvalidBookingException("Selected room type is not available.");
+        }
+    }
+}
+
 abstract class Room {
 
     protected String roomType;
@@ -81,7 +110,9 @@ class Reservation {
 }
 
 class BookingHistory {
+
     private List<Reservation> confirmedReservations;
+
     public BookingHistory() {
         confirmedReservations = new ArrayList<>();
     }
@@ -94,7 +125,6 @@ class BookingHistory {
         return confirmedReservations;
     }
 }
-
 
 class BookingRequestQueue {
 
@@ -149,18 +179,15 @@ class RoomAllocationService {
 
         availability.put(type, availability.get(type) - 1);
 
-        System.out.println(
-                "Booking confirmed for Guest: "
-                        + reservation.getGuestName()
-                        + ", Room ID: "
-                        + roomId
-        );
+        System.out.println("Booking confirmed for Guest: "
+                + reservation.getGuestName()
+                + ", Room ID: "
+                + roomId);
     }
 
     private String generateRoomId(String roomType) {
 
         int number = assignedRoomsByType.get(roomType).size() + 1;
-
         String id = roomType + "-" + number;
 
         while (allocatedRoomIds.contains(id)) {
@@ -201,11 +228,9 @@ class AddOnServiceManager {
 
     public void addService(String reservationId, Service service) {
 
-        if (!servicesByReservation.containsKey(reservationId)) {
-            servicesByReservation.put(reservationId, new ArrayList<>());
-        }
-
-        servicesByReservation.get(reservationId).add(service);
+        servicesByReservation
+                .computeIfAbsent(reservationId, k -> new ArrayList<>())
+                .add(service);
     }
 
     public double calculateTotalServiceCost(String reservationId) {
@@ -224,62 +249,65 @@ class AddOnServiceManager {
     }
 }
 
-
 public class BookMyStay {
 
     public static void main(String[] args) {
-        System.out.println("Booking History and Reporting\n");
 
-        System.out.println("Room Allocation Processing\n");
+        System.out.println("Booking Validation System\n");
+
+        Scanner scanner = new Scanner(System.in);
 
         RoomInventory inventory = new RoomInventory();
 
         inventory.registerRoom("Single", 5);
         inventory.registerRoom("Double", 3);
-        inventory.registerRoom("Suite", 3);
+        inventory.registerRoom("Suite", 2);
+
+        ReservationValidator validator = new ReservationValidator();
+        BookingRequestQueue bookingQueue = new BookingRequestQueue();
+        RoomAllocationService allocationService = new RoomAllocationService();
         BookingHistory history = new BookingHistory();
 
-        BookingRequestQueue bookingQueue = new BookingRequestQueue();
-        Reservation r1 = new Reservation("Abhi", "Single");
-        Reservation r2 = new Reservation("Subha", "Double");
-        Reservation r3 = new Reservation("Vanmathi", "Suite");
+        try {
 
-        bookingQueue.addRequest(new Reservation("Abhi", "Single"));
-        bookingQueue.addRequest(new Reservation("Subha", "Single"));
-        bookingQueue.addRequest(new Reservation("Vanmathi", "Suite"));
-        history.addReservation(r1);
-        history.addReservation(r2);
-        history.addReservation(r3);
+            System.out.print("Enter guest name: ");
+            String guestName = scanner.nextLine();
 
-        RoomAllocationService allocationService = new RoomAllocationService();
-        System.out.println("Booking History Report");
+            System.out.print("Enter room type (Single/Double/Suite): ");
+            String roomType = scanner.nextLine();
 
-        while (bookingQueue.hasPendingRequests()) {
+            validator.validate(guestName, roomType, inventory);
 
-            Reservation reservation = bookingQueue.getNextRequest();
+            Reservation reservation = new Reservation(guestName, roomType);
 
-            allocationService.allocateRoom(reservation, inventory);
-            for (Reservation r : history.getConfirmedReservations()) {
-                System.out.println(
-                        "Guest: " + r.getGuestName() +
-                                ", Room Type: " + r.getRoomType()
-                );
+            bookingQueue.addRequest(reservation);
+
+            while (bookingQueue.hasPendingRequests()) {
+
+                Reservation request = bookingQueue.getNextRequest();
+
+                allocationService.allocateRoom(request, inventory);
+
+                history.addReservation(request);
             }
 
-            System.out.println("\nAdd-On Service Selection");
+            System.out.println("\nBooking History Report");
 
-            AddOnServiceManager serviceManager = new AddOnServiceManager();
+            for (Reservation r : history.getConfirmedReservations()) {
 
-            Service spa = new Service("Spa", 1500.0);
+                System.out.println("Guest: "
+                        + r.getGuestName()
+                        + ", Room Type: "
+                        + r.getRoomType());
+            }
 
-            String reservationId = "Single-1";
+        } catch (InvalidBookingException e) {
 
-            serviceManager.addService(reservationId, spa);
+            System.out.println("Booking failed: " + e.getMessage());
 
-            double totalCost = serviceManager.calculateTotalServiceCost(reservationId);
+        } finally {
 
-            System.out.println("Reservation ID: " + reservationId);
-            System.out.println("Total Add-On Cost: " + totalCost);
+            scanner.close();
         }
     }
 }
