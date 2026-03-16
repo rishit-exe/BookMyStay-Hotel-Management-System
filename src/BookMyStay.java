@@ -80,6 +80,22 @@ class Reservation {
     }
 }
 
+class BookingHistory {
+    private List<Reservation> confirmedReservations;
+    public BookingHistory() {
+        confirmedReservations = new ArrayList<>();
+    }
+
+    public void addReservation(Reservation reservation) {
+        confirmedReservations.add(reservation);
+    }
+
+    public List<Reservation> getConfirmedReservations() {
+        return confirmedReservations;
+    }
+}
+
+
 class BookingRequestQueue {
 
     private Queue<Reservation> requestQueue;
@@ -212,6 +228,7 @@ class AddOnServiceManager {
 public class BookMyStay {
 
     public static void main(String[] args) {
+        System.out.println("Booking History and Reporting\n");
 
         System.out.println("Room Allocation Processing\n");
 
@@ -220,35 +237,49 @@ public class BookMyStay {
         inventory.registerRoom("Single", 5);
         inventory.registerRoom("Double", 3);
         inventory.registerRoom("Suite", 3);
+        BookingHistory history = new BookingHistory();
 
         BookingRequestQueue bookingQueue = new BookingRequestQueue();
+        Reservation r1 = new Reservation("Abhi", "Single");
+        Reservation r2 = new Reservation("Subha", "Double");
+        Reservation r3 = new Reservation("Vanmathi", "Suite");
 
         bookingQueue.addRequest(new Reservation("Abhi", "Single"));
         bookingQueue.addRequest(new Reservation("Subha", "Single"));
         bookingQueue.addRequest(new Reservation("Vanmathi", "Suite"));
+        history.addReservation(r1);
+        history.addReservation(r2);
+        history.addReservation(r3);
 
         RoomAllocationService allocationService = new RoomAllocationService();
+        System.out.println("Booking History Report");
 
         while (bookingQueue.hasPendingRequests()) {
 
             Reservation reservation = bookingQueue.getNextRequest();
 
             allocationService.allocateRoom(reservation, inventory);
+            for (Reservation r : history.getConfirmedReservations()) {
+                System.out.println(
+                        "Guest: " + r.getGuestName() +
+                                ", Room Type: " + r.getRoomType()
+                );
+            }
+
+            System.out.println("\nAdd-On Service Selection");
+
+            AddOnServiceManager serviceManager = new AddOnServiceManager();
+
+            Service spa = new Service("Spa", 1500.0);
+
+            String reservationId = "Single-1";
+
+            serviceManager.addService(reservationId, spa);
+
+            double totalCost = serviceManager.calculateTotalServiceCost(reservationId);
+
+            System.out.println("Reservation ID: " + reservationId);
+            System.out.println("Total Add-On Cost: " + totalCost);
         }
-
-        System.out.println("\nAdd-On Service Selection");
-
-        AddOnServiceManager serviceManager = new AddOnServiceManager();
-
-        Service spa = new Service("Spa", 1500.0);
-
-        String reservationId = "Single-1";
-
-        serviceManager.addService(reservationId, spa);
-
-        double totalCost = serviceManager.calculateTotalServiceCost(reservationId);
-
-        System.out.println("Reservation ID: " + reservationId);
-        System.out.println("Total Add-On Cost: " + totalCost);
     }
 }
