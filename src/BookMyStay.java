@@ -7,7 +7,6 @@ class InvalidBookingException extends Exception {
 }
 
 class ReservationValidator {
-
     public void validate(String guestName, String roomType, RoomInventory inventory)
             throws InvalidBookingException {
 
@@ -45,13 +44,6 @@ abstract class Room {
 
     public String getRoomType() {
         return roomType;
-    }
-
-    public void displayRoom() {
-        System.out.println(roomType + " Room");
-        System.out.println("Beds: " + beds);
-        System.out.println("Size: " + size + " sqft");
-        System.out.println("Price per night: " + price);
     }
 }
 
@@ -236,8 +228,6 @@ class CancellationService {
 
     public void showRollbackHistory() {
 
-        System.out.println("\nRollback History (Most recent first):");
-
         Stack<String> temp = (Stack<String>) releasedRoomIds.clone();
 
         while (!temp.isEmpty()) {
@@ -246,86 +236,95 @@ class CancellationService {
     }
 }
 
+class ConcurrentBookingProcessor implements Runnable {
+
+    private BookingRequestQueue bookingQueue;
+    private RoomInventory inventory;
+    private RoomAllocationService allocationService;
+
+    public ConcurrentBookingProcessor(
+            BookingRequestQueue bookingQueue,
+            RoomInventory inventory,
+            RoomAllocationService allocationService
+    ) {
+        this.bookingQueue = bookingQueue;
+        this.inventory = inventory;
+        this.allocationService = allocationService;
+    }
+
+    @Override
+    public void run() {
+
+        while (true) {
+
+            Reservation reservation;
+
+            synchronized (bookingQueue) {
+
+                if (!bookingQueue.hasPendingRequests()) {
+                    break;
+                }
+
+                reservation = bookingQueue.getNextRequest();
+            }
+
+            synchronized (inventory) {
+
+                allocationService.allocateRoom(reservation, inventory);
+            }
+        }
+    }
+}
+
 public class BookMyStay {
 
     public static void main(String[] args) {
 
-        Scanner scanner = new Scanner(System.in);
-
         RoomInventory inventory = new RoomInventory();
 
-        inventory.registerRoom("Single", 5);
-        inventory.registerRoom("Double", 3);
-        inventory.registerRoom("Suite", 2);
+        inventory.registerRoom("Single", 2);
+        inventory.registerRoom("Double", 2);
+        inventory.registerRoom("Suite", 1);
 
-        ReservationValidator validator = new ReservationValidator();
         BookingRequestQueue bookingQueue = new BookingRequestQueue();
+
+        bookingQueue.addRequest(new Reservation("Abhi", "Single"));
+        bookingQueue.addRequest(new Reservation("Vansh", "Double"));
+        bookingQueue.addRequest(new Reservation("Kunal", "Suite"));
+        bookingQueue.addRequest(new Reservation("John", "Single"));
+
         RoomAllocationService allocationService = new RoomAllocationService();
-        BookingHistory history = new BookingHistory();
-        CancellationService cancellationService = new CancellationService();
+
+        Thread t1 = new Thread(
+                new ConcurrentBookingProcessor(
+                        bookingQueue, inventory, allocationService
+                )
+        );
+
+        Thread t2 = new Thread(
+                new ConcurrentBookingProcessor(
+                        bookingQueue, inventory, allocationService
+                )
+        );
+
+        t1.start();
+        t2.start();
 
         try {
 
-            System.out.println("Booking Validation System\n");
+            t1.join();
+            t2.join();
 
-            System.out.print("Enter guest name: ");
-            String guestName = scanner.nextLine();
+        } catch (InterruptedException e) {
 
-            System.out.print("Enter room type (Single/Double/Suite): ");
-            String roomType = scanner.nextLine();
+            System.out.println("Thread execution interrupted.");
+        }
 
-            validator.validate(guestName, roomType, inventory);
+        System.out.println("\nRemaining Inventory:");
 
-            Reservation reservation = new Reservation(guestName, roomType);
+        for (Map.Entry<String, Integer> entry : inventory.getRoomAvailability().entrySet()) {
 
-            bookingQueue.addRequest(reservation);
-
-            String reservationId = null;
-
-            while (bookingQueue.hasPendingRequests()) {
-
-                Reservation request = bookingQueue.getNextRequest();
-
-                reservationId = allocationService.allocateRoom(request, inventory);
-
-                if (reservationId != null) {
-                    cancellationService.registerBooking(reservationId, request.getRoomType());
-                }
-
-                history.addReservation(request);
-            }
-
-            System.out.println("\nBooking History Report");
-
-            for (Reservation r : history.getConfirmedReservations()) {
-
-                System.out.println("Guest: "
-                        + r.getGuestName()
-                        + ", Room Type: "
-                        + r.getRoomType());
-            }
-
-            System.out.println("\nBooking Cancellation");
-
-            System.out.print("Enter Reservation ID to cancel: ");
-            String cancelId = scanner.nextLine();
-
-            cancellationService.cancelBooking(cancelId, inventory);
-
-            cancellationService.showRollbackHistory();
-
-            String type = cancelId.split("-")[0];
-
-            System.out.println("\nUpdated " + type + " Room Availability: "
-                    + inventory.getRoomAvailability().get(type));
-
-        } catch (InvalidBookingException e) {
-
-            System.out.println("Booking failed: " + e.getMessage());
-
-        } finally {
-
-            scanner.close();
+            System.out.println(entry.getKey() + ": " + entry.getValue());
         }
     }
 }
